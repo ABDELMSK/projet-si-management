@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,8 +17,12 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Search, Edit, Trash2, Users } from "lucide-react"
+import { Plus, Search, Edit, Trash2, Users, Loader2, AlertCircle } from "lucide-react"
 import { usePermissions } from "@/lib/auth"
+import { useUsers } from "@/hooks/useUsers"
+import { referenceService, Direction, Role } from "@/lib/api"
+import AccessDenied from "@/components/acces-denied"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function UserManagement() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
@@ -27,85 +30,93 @@ export default function UserManagement() {
   const [newUser, setNewUser] = useState({
     nom: "",
     email: "",
-    role: "",
-    direction: "",
+    password: "",
+    role_id: "",
+    direction_id: "",
   })
-  const permissions = usePermissions()
+  const [directions, setDirections] = useState<Direction[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
+  const [loadingReferences, setLoadingReferences] = useState(true)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createLoading, setCreateLoading] = useState(false)
 
+  const permissions = usePermissions()
+  const { users, loading, error, fetchUsers, createUser } = useUsers()
+
+  // Vérification des permissions - Seuls les admins peuvent accéder
   if (!permissions.canManageUsers) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Accès refusé</h1>
-          <p className="text-muted-foreground">Vous n'avez pas les permissions pour gérer les utilisateurs.</p>
-        </div>
-      </div>
+      <AccessDenied 
+        title="Gestion des Utilisateurs - Accès Réservé"
+        message="La gestion des utilisateurs est réservée aux administrateurs fonctionnels."
+        requiredRole="Administrateur fonctionnel"
+      />
     )
   }
 
-  const users = [
-    {
-      id: 1,
-      nom: "Marie Dubois",
-      email: "marie.dubois@entreprise.fr",
-      role: "Chef de Projet",
-      direction: "DSI",
-      statut: "Actif",
-      dernierAcces: "2024-01-15",
-    },
-    {
-      id: 2,
-      nom: "Pierre Martin",
-      email: "pierre.martin@entreprise.fr",
-      role: "Chef de Projet",
-      direction: "DSI",
-      statut: "Actif",
-      dernierAcces: "2024-01-14",
-    },
-    {
-      id: 3,
-      nom: "Sophie Laurent",
-      email: "sophie.laurent@entreprise.fr",
-      role: "Chef de Projet",
-      direction: "Marketing",
-      statut: "Actif",
-      dernierAcces: "2024-01-13",
-    },
-    {
-      id: 4,
-      nom: "Thomas Durand",
-      email: "thomas.durand@entreprise.fr",
-      role: "PMO",
-      direction: "DSI",
-      statut: "Actif",
-      dernierAcces: "2024-01-15",
-    },
-    {
-      id: 5,
-      nom: "Admin System",
-      email: "admin@entreprise.fr",
-      role: "Administrateur fonctionnel",
-      direction: "DSI",
-      statut: "Actif",
-      dernierAcces: "2024-01-15",
-    },
-  ]
+  // Charger les références (directions et rôles)
+  useEffect(() => {
+    const loadReferences = async () => {
+      try {
+        setLoadingReferences(true)
+        const [directionsResponse, rolesResponse] = await Promise.all([
+          referenceService.getDirections(),
+          referenceService.getRoles()
+        ])
+        
+        if (directionsResponse.success) {
+          setDirections(directionsResponse.data)
+        }
+        if (rolesResponse.success) {
+          setRoles(rolesResponse.data)
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des références:', error)
+      } finally {
+        setLoadingReferences(false)
+      }
+    }
 
-  const roles = ["Chef de Projet", "PMO / Directeur de projets", "Administrateur fonctionnel"]
+    loadReferences()
+  }, [])
 
-  const directions = ["DSI", "Marketing", "Finance", "RH", "Commercial", "Production"]
+  // Recherche avec délai
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm.trim()) {
+        fetchUsers(searchTerm)
+      } else {
+        fetchUsers()
+      }
+    }, 500)
 
-  const filteredUsers = users.filter(
-    (user) =>
-      user.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm, fetchUsers])
 
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    console.log("Création utilisateur:", newUser)
-    setShowCreateDialog(false)
-    setNewUser({ nom: "", email: "", role: "", direction: "" })
+    setCreateLoading(true)
+    setCreateError(null)
+    
+    try {
+      const result = await createUser({
+        ...newUser,
+        role_id: parseInt(newUser.role_id),
+        direction_id: parseInt(newUser.direction_id)
+      })
+      
+      if (result.success) {
+        setShowCreateDialog(false)
+        setNewUser({ nom: "", email: "", password: "", role_id: "", direction_id: "" })
+        // Optionnel: afficher un message de succès
+      } else {
+        setCreateError(result.error || 'Erreur lors de la création')
+      }
+    } catch (error) {
+      setCreateError('Erreur de connexion au serveur')
+    } finally {
+      setCreateLoading(false)
+    }
   }
 
   const getRoleColor = (role: string) => {
@@ -121,18 +132,64 @@ export default function UserManagement() {
     }
   }
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Jamais'
+    return new Date(dateString).toLocaleDateString('fr-FR')
+  }
+
+  if (loading && users.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Chargement des utilisateurs...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
+      {/* Header avec information admin */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Gestion des Utilisateurs</h1>
-          <p className="text-muted-foreground">Gérez les accès et permissions des utilisateurs</p>
+          <p className="text-muted-foreground">
+            Gérez les accès et permissions des utilisateurs (Admin seulement)
+          </p>
         </div>
         <Button onClick={() => setShowCreateDialog(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Nouvel Utilisateur
         </Button>
       </div>
+
+      {/* Alerte d'information pour l'admin */}
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          <strong>Mode Administrateur:</strong> Vous avez accès à toutes les fonctionnalités de gestion des utilisateurs.
+          Rôle actuel: <strong>{permissions.userRole}</strong>
+        </AlertDescription>
+      </Alert>
+
+      {/* Affichage des erreurs */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {error}
+            <Button 
+              onClick={() => fetchUsers()} 
+              variant="outline" 
+              size="sm"
+              className="ml-2"
+            >
+              Réessayer
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -151,7 +208,9 @@ export default function UserManagement() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.filter((u) => u.role === "Chef de Projet").length}</div>
+            <div className="text-2xl font-bold">
+              {users.filter((u) => u.role_nom === "Chef de Projet").length}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -160,7 +219,9 @@ export default function UserManagement() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{users.filter((u) => u.statut === "Actif").length}</div>
+            <div className="text-2xl font-bold">
+              {users.filter((u) => u.statut === "Actif").length}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -186,48 +247,61 @@ export default function UserManagement() {
       {/* Users Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Liste des Utilisateurs ({filteredUsers.length})</CardTitle>
+          <CardTitle>Liste des Utilisateurs ({users.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nom</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Rôle</TableHead>
-                <TableHead>Direction</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead>Dernier accès</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">{user.nom}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
-                    <Badge variant={getRoleColor(user.role)}>{user.role}</Badge>
-                  </TableCell>
-                  <TableCell>{user.direction}</TableCell>
-                  <TableCell>
-                    <Badge variant={user.statut === "Actif" ? "default" : "secondary"}>{user.statut}</Badge>
-                  </TableCell>
-                  <TableCell>{user.dernierAcces}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              Chargement...
+            </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              Aucun utilisateur trouvé
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nom</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Rôle</TableHead>
+                  <TableHead>Direction</TableHead>
+                  <TableHead>Statut</TableHead>
+                  <TableHead>Dernier accès</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">{user.nom}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <Badge variant={getRoleColor(user.role_nom)}>{user.role_nom}</Badge>
+                    </TableCell>
+                    <TableCell>{user.direction_nom}</TableCell>
+                    <TableCell>
+                      <Badge variant={user.statut === "Actif" ? "default" : "secondary"}>
+                        {user.statut}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{formatDate(user.dernier_acces)}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" title="Modifier">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="outline" size="sm" title="Supprimer">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -236,10 +310,19 @@ export default function UserManagement() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Créer un nouvel utilisateur</DialogTitle>
-            <DialogDescription>Ajoutez un nouvel utilisateur au système</DialogDescription>
+            <DialogDescription>
+              Ajoutez un nouvel utilisateur au système. Tous les champs sont requis.
+            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleCreateUser} className="space-y-4">
+            {createError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{createError}</AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="nom">Nom complet *</Label>
               <Input
@@ -248,8 +331,10 @@ export default function UserManagement() {
                 onChange={(e) => setNewUser({ ...newUser, nom: e.target.value })}
                 placeholder="Ex: Marie Dubois"
                 required
+                disabled={createLoading}
               />
             </div>
+            
             <div className="space-y-2">
               <Label htmlFor="email">Email *</Label>
               <Input
@@ -259,44 +344,91 @@ export default function UserManagement() {
                 onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                 placeholder="marie.dubois@entreprise.fr"
                 required
+                disabled={createLoading}
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Mot de passe *</Label>
+              <Input
+                id="password"
+                type="password"
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                placeholder="Mot de passe sécurisé (min. 6 caractères)"
+                required
+                minLength={6}
+                disabled={createLoading}
+              />
+            </div>
+            
             <div className="space-y-2">
               <Label htmlFor="role">Rôle *</Label>
-              <Select value={newUser.role} onValueChange={(value) => setNewUser({ ...newUser, role: value })}>
+              <Select 
+                value={newUser.role_id} 
+                onValueChange={(value) => setNewUser({ ...newUser, role_id: value })}
+                disabled={createLoading}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner un rôle" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {role}
-                    </SelectItem>
-                  ))}
+                  {loadingReferences ? (
+                    <SelectItem value="loading" disabled>Chargement...</SelectItem>
+                  ) : (
+                    roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id.toString()}>
+                        {role.nom}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
+            
             <div className="space-y-2">
               <Label htmlFor="direction">Direction *</Label>
-              <Select value={newUser.direction} onValueChange={(value) => setNewUser({ ...newUser, direction: value })}>
+              <Select 
+                value={newUser.direction_id} 
+                onValueChange={(value) => setNewUser({ ...newUser, direction_id: value })}
+                disabled={createLoading}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner une direction" />
                 </SelectTrigger>
                 <SelectContent>
-                  {directions.map((direction) => (
-                    <SelectItem key={direction} value={direction}>
-                      {direction}
-                    </SelectItem>
-                  ))}
+                  {loadingReferences ? (
+                    <SelectItem value="loading" disabled>Chargement...</SelectItem>
+                  ) : (
+                    directions.map((direction) => (
+                      <SelectItem key={direction.id} value={direction.id.toString()}>
+                        {direction.nom}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setShowCreateDialog(false)}
+                disabled={createLoading}
+              >
                 Annuler
               </Button>
-              <Button type="submit">Créer l'utilisateur</Button>
+              <Button type="submit" disabled={createLoading}>
+                {createLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Création...
+                  </>
+                ) : (
+                  'Créer l\'utilisateur'
+                )}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
