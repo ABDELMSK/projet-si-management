@@ -1,25 +1,30 @@
+// components/login-form.tsx
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Lock, Mail } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react"
 
 export default function LoginForm() {
+  const { login, isLoading } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
-  const { login, isLoading } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+
+    if (!email || !password) {
+      setError("Veuillez remplir tous les champs")
+      return
+    }
 
     const result = await login(email, password)
     if (!result.success) {
@@ -27,52 +32,72 @@ export default function LoginForm() {
     }
   }
 
+  // Fonction pour remplir automatiquement les champs avec un compte de démonstration
+  const fillDemoAccount = (demoEmail: string, demoPassword: string) => {
+    setEmail(demoEmail)
+    setPassword(demoPassword)
+    setError("")
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Connexion</CardTitle>
-          <CardDescription className="text-center">Système Référentiel SI</CardDescription>
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl font-bold">Connexion</CardTitle>
+          <CardDescription>
+            Accédez à votre tableau de bord de gestion de projets
+          </CardDescription>
         </CardHeader>
         <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="votre.email@entreprise.fr"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10"
-                  required
-                />
-              </div>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="votre.email@entreprise.fr"
+                disabled={isLoading}
+                required
+              />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">Mot de passe</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="password"
-                  type="password"
-                  placeholder="••••••••"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="pl-10"
+                  placeholder="Votre mot de passe"
+                  disabled={isLoading}
                   required
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isLoading}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
               </div>
             </div>
-
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
@@ -87,24 +112,59 @@ export default function LoginForm() {
           </form>
 
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm font-medium mb-2">Comptes de démonstration :</p>
-            <div className="space-y-2 text-xs">
-              <div>
-                <strong>Chef de Projet :</strong>
-                <br />
-                marie.dubois@entreprise.fr / password123
+            <p className="text-sm font-medium mb-3">Comptes de démonstration :</p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2 bg-white rounded border">
+                <div className="text-xs">
+                  <div className="font-medium">Chef de Projet</div>
+                  <div className="text-gray-600">marie.dubois@entreprise.fr</div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => fillDemoAccount("marie.dubois@entreprise.fr", "password123")}
+                  disabled={isLoading}
+                >
+                  Utiliser
+                </Button>
               </div>
-              <div>
-                <strong>PMO :</strong>
-                <br />
-                thomas.durand@entreprise.fr / password123
+
+              <div className="flex items-center justify-between p-2 bg-white rounded border">
+                <div className="text-xs">
+                  <div className="font-medium">PMO</div>
+                  <div className="text-gray-600">thomas.durand@entreprise.fr</div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => fillDemoAccount("thomas.durand@entreprise.fr", "password123")}
+                  disabled={isLoading}
+                >
+                  Utiliser
+                </Button>
               </div>
-              <div>
-                <strong>Admin :</strong>
-                <br />
-                admin@entreprise.fr / admin123
+
+              <div className="flex items-center justify-between p-2 bg-white rounded border">
+                <div className="text-xs">
+                  <div className="font-medium">Administrateur</div>
+                  <div className="text-gray-600">admin@entreprise.fr</div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => fillDemoAccount("admin@entreprise.fr", "admin123")}
+                  disabled={isLoading}
+                >
+                  Utiliser
+                </Button>
               </div>
             </div>
+          </div>
+
+          <div className="mt-4 text-center">
+            <p className="text-xs text-gray-500">
+              Développé pour la gestion de projets d'entreprise
+            </p>
           </div>
         </CardContent>
       </Card>

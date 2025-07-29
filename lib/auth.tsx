@@ -1,113 +1,135 @@
+// lib/auth.tsx
 "use client"
 
-import type React from "react"
-import { createContext, useContext, useEffect, useState } from "react"
-import { authService, User } from "./api"
+import React, { createContext, useContext, useState, useEffect } from 'react'
+import { authService } from './api'
+
+interface User {
+  id: number
+  nom: string
+  email: string
+  role: string
+  role_nom: string
+  direction_id?: number
+  direction_nom?: string
+}
 
 interface AuthContextType {
   user: User | null
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
-  isLoading: boolean
-  hasPermission: (permission: string) => boolean
+  loading: boolean
+  isAuthenticated: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isHydrated, setIsHydrated] = useState(false)
+  const [loading, setLoading] = useState(true)
 
-  // Handle client-side hydration
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
-
-  useEffect(() => {
-    // Only run after hydration to prevent SSR mismatch
-    if (!isHydrated) return
-
-    checkAuthStatus()
-  }, [isHydrated])
-
-  const checkAuthStatus = async () => {
+  // Fonction pour vérifier et charger l'utilisateur
+  const loadUser = async () => {
     try {
-      // Vérifier s'il y a un token stocké
-      if (!authService.isAuthenticated()) {
-        setIsLoading(false)
+      setLoading(true)
+      const token = localStorage.getItem('token')
+      
+      if (!token) {
+        console.log('🔐 Aucun token trouvé')
+        setUser(null)
         return
       }
 
-      // Vérifier le token avec le serveur
-      const response = await authService.getCurrentUser()
-      if (response.success) {
+      console.log('🔐 Token trouvé, vérification...')
+      const response = await authService.me()
+      
+      // ✅ CORRECTION: L'API retourne response.user, pas response.data
+      if (response.success && response.user) {
+        console.log('✅ Utilisateur authentifié:', response.user.nom)
         setUser(response.user)
       } else {
-        // Token invalide, nettoyer le localStorage
-        authService.logout()
+        console.log('❌ Token invalide, suppression')
+        localStorage.removeItem('token')
+        setUser(null)
       }
-    } catch (error) {
-      console.error('Erreur de vérification d\'authentification:', error)
-      authService.logout()
+    } catch (error: any) {
+      console.error('❌ Erreur vérification auth:', error.message)
+      
+      // Si erreur 401, supprimer le token invalide
+      if (error.message.includes('401') || error.message.includes('Token') || error.message.includes('Session expirée')) {
+        console.log('🗑️ Suppression du token invalide')
+        localStorage.removeItem('token')
+      }
+      
+      setUser(null)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
+  // Fonction de connexion
   const login = async (email: string, password: string) => {
-    setIsLoading(true)
     try {
+      console.log('🔐 Tentative de connexion...', email)
       const response = await authService.login(email, password)
-      if (response.success) {
+      
+      // ✅ CORRECTION: L'API retourne response.user, pas response.data
+      if (response.success && response.user) {
+        console.log('✅ Connexion réussie:', response.user.nom)
         setUser(response.user)
         return { success: true }
       } else {
-        return { success: false, error: response.message }
+        console.error('❌ Échec de connexion:', response.message)
+        return { success: false, error: response.message || 'Échec de la connexion' }
       }
-    } catch (error) {
-      console.error('Erreur de connexion:', error)
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Erreur de connexion' 
-      }
-    } finally {
-      setIsLoading(false)
+    } catch (error: any) {
+      console.error('❌ Erreur de connexion:', error.message)
+      return { success: false, error: error.message || 'Erreur de connexion' }
     }
   }
 
+  // Fonction de déconnexion
   const logout = () => {
+    console.log('🔐 Déconnexion...')
     authService.logout()
     setUser(null)
-  }
-
-  // Fonction pour vérifier les permissions
-  const hasPermission = (permission: string): boolean => {
-    if (!user) return false
     
-    // L'administrateur fonctionnel a tous les droits
-    if (user.role_nom === "Administrateur fonctionnel") return true
-    
-    // Parser les permissions JSON
-    try {
-      const permissions = user.permissions ? JSON.parse(user.permissions) : {}
-      return permissions[permission] === true
-    } catch {
-      return false
+    // Redirection vers la page de connexion si nécessaire
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      window.location.href = '/login'
     }
   }
 
-  // Prevent flash of unauthenticated content
-  if (!isHydrated) {
-    return (
-      <AuthContext.Provider value={{ user: null, login, logout, isLoading: true, hasPermission: () => false }}>
-        {children}
-      </AuthContext.Provider>
-    )
+  // Charger l'utilisateur au démarrage
+  useEffect(() => {
+    loadUser()
+  }, [])
+
+  // Intercepteur global pour les erreurs 401
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      console.log('🔐 Erreur 401 détectée - Déconnexion automatique')
+      logout()
+    }
+
+    // Écouter les erreurs d'authentification
+    window.addEventListener('auth-error', handleUnauthorized)
+    
+    return () => {
+      window.removeEventListener('auth-error', handleUnauthorized)
+    }
+  }, [])
+
+  const value = {
+    user,
+    login,
+    logout,
+    loading,
+    isAuthenticated: !!user,
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading, hasPermission }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )
@@ -116,38 +138,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
+    throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
 }
 
-// Hook pour vérifier les permissions avec des noms plus clairs
+// Hook pour les permissions
 export function usePermissions() {
-  const { user, hasPermission } = useAuth()
+  const { user } = useAuth()
+  
+  if (!user) {
+    return {
+      canCreateProject: false,
+      canManageUsers: false,
+      canViewAllProjects: false,
+      canEditProject: () => false,
+    }
+  }
+
+  const isAdmin = user.role_nom === 'Administrateur fonctionnel'
+  const isPMO = user.role_nom === 'PMO / Directeur de projets'
+  const isChefProjet = user.role_nom === 'Chef de Projet'
 
   return {
-    // Permissions basées sur les rôles
-    isAdmin: user?.role_nom === "Administrateur fonctionnel",
-    isPMO: user?.role_nom === "PMO / Directeur de projets",
-    isChefProjet: user?.role_nom === "Chef de Projet",
-    
-    // Permissions spécifiques
-    canManageUsers: user?.role_nom === "Administrateur fonctionnel",
-    canCreateProject: user?.role_nom === "PMO / Directeur de projets" || user?.role_nom === "Administrateur fonctionnel",
-    canViewAllProjects: user?.role_nom === "PMO / Directeur de projets" || user?.role_nom === "Administrateur fonctionnel",
-    canGenerateReports: user?.role_nom === "PMO / Directeur de projets" || user?.role_nom === "Administrateur fonctionnel",
-    
-    // Fonction pour vérifier les permissions de projet
-    canModifyProject: (projectChef?: string) => {
-      if (user?.role_nom === "Administrateur fonctionnel") return true
-      if (user?.role_nom === "PMO / Directeur de projets") return true
-      if (user?.role_nom === "Chef de Projet" && projectChef === user.nom) return true
+    canCreateProject: isAdmin || isPMO,
+    canManageUsers: isAdmin,
+    canViewAllProjects: isAdmin || isPMO,
+    canEditProject: (projectChefId?: number) => {
+      if (isAdmin || isPMO) return true
+      if (isChefProjet && projectChefId === user.id) return true
       return false
     },
-    
-    // Informations utilisateur
-    userRole: user?.role_nom,
-    userName: user?.nom,
-    userEmail: user?.email,
   }
 }

@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -36,7 +35,6 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
   })
 
   const projectTypes = ["ERP", "Développement spécifique", "Migration", "Sécurité", "Infrastructure", "Maintenance"]
-
   const directions = ["DSI", "Marketing", "Finance", "RH", "Commercial", "Production"]
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -63,7 +61,9 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Créer un nouveau projet</DialogTitle>
-          <DialogDescription>Remplissez les informations générales du projet</DialogDescription>
+          <DialogDescription>
+            Remplissez les informations générales du projet
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -118,11 +118,8 @@ export default function CreateProjectDialog({ open, onOpenChange }: CreateProjec
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="direction">Direction métier *</Label>
-              <Select
-                value={formData.direction}
-                onValueChange={(value) => setFormData({ ...formData, direction: value })}
-              >
+              <Label htmlFor="direction">Direction *</Label>
+              <Select value={formData.direction} onValueChange={(value) => setFormData({ ...formData, direction: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Sélectionner une direction" />
                 </SelectTrigger>

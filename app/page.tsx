@@ -1,3 +1,4 @@
+// app/page.tsx - Mise à jour avec gestion des détails de projet
 "use client"
 
 import { useState } from "react"
@@ -14,10 +15,12 @@ import Reports from "@/components/reports"
 import { AuthProvider } from "@/lib/auth"
 import ProtectedRoute from "@/components/protected-route"
 import SessionTimeout from "@/components/session-timeout"
+import type { Project } from "@/lib/api"
 
 export default function Dashboard() {
   const [currentView, setCurrentView] = useState("dashboard")
-  const [selectedProject, setSelectedProject] = useState(null)
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
 
   const stats = [
     {
@@ -76,16 +79,56 @@ export default function Dashboard() {
     },
   ]
 
+  // Fonction pour gérer l'affichage des détails d'un projet
+  const handleViewProjectDetails = (projectId: number) => {
+    setSelectedProjectId(projectId)
+    setCurrentView("project-detail")
+  }
+
+  // Fonction pour éditer un projet
+  const handleEditProject = (project: Project) => {
+    setSelectedProject(project)
+    // Ici vous pourriez ouvrir un dialogue d'édition
+    console.log("Édition du projet:", project.nom)
+  }
+
+  // Fonction pour revenir à la liste des projets
+  const handleBackToProjects = () => {
+    setSelectedProjectId(null)
+    setSelectedProject(null)
+    setCurrentView("projects")
+  }
+
   const renderContent = () => {
     switch (currentView) {
       case "projects":
-        return <ProjectsList onSelectProject={setSelectedProject} />
+        return (
+          <ProjectsList 
+            onViewDetails={handleViewProjectDetails}
+            onEditProject={handleEditProject}
+          />
+        )
+      
       case "project-detail":
-        return <ProjectDetail project={selectedProject} onBack={() => setCurrentView("projects")} />
+        return selectedProjectId ? (
+          <ProjectDetail 
+            projectId={selectedProjectId}
+            onBack={handleBackToProjects}
+            onEdit={handleEditProject}
+          />
+        ) : (
+          <div className="text-center py-12">
+            <p>Projet non sélectionné</p>
+            <Button onClick={handleBackToProjects}>Retour à la liste</Button>
+          </div>
+        )
+      
       case "users":
         return <UserManagement />
+      
       case "reports":
         return <Reports />
+      
       default:
         return (
           <div className="space-y-6">
@@ -104,68 +147,26 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {/* Recent Projects */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Projets récents</CardTitle>
-                <CardDescription>Vue d'ensemble des projets en cours</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentProjects.map((project) => (
-                    <div key={project.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium">{project.name}</h3>
-                          <Badge variant="outline">{project.id}</Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">Chef: {project.chef}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <div className="text-sm font-medium">{project.budget}</div>
-                          <div className="text-xs text-muted-foreground">{project.status}</div>
-                        </div>
-                        <div className="w-24">
-                          <Progress value={project.progress} className="h-2" />
-                          <div className="text-xs text-center mt-1">{project.progress}%</div>
-                        </div>
-                        <Badge
-                          variant={
-                            project.health === "Vert"
-                              ? "default"
-                              : project.health === "Orange"
-                                ? "secondary"
-                                : "destructive"
-                          }
-                        >
-                          {project.health}
-                        </Badge>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedProject(project)
-                            setCurrentView("project-detail")
-                          }}
-                        >
-                          Voir détail
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Quick Actions */}
-            <div className="grid gap-4 md:grid-cols-2">
+            {/* Actions rapides */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <Card>
                 <CardHeader>
                   <CardTitle>Actions rapides</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
-                  <Button className="w-full justify-start" onClick={() => setCurrentView("projects")}>
+                <CardContent className="space-y-3">
+                  <Button 
+                    className="w-full justify-start bg-transparent" 
+                    variant="outline"
+                    onClick={() => setCurrentView("projects")}
+                  >
+                    <FolderOpen className="mr-2 h-4 w-4" />
+                    Voir tous les projets
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start bg-transparent"
+                    onClick={() => setCurrentView("projects")}
+                  >
                     <FolderOpen className="mr-2 h-4 w-4" />
                     Créer un nouveau projet
                   </Button>
@@ -209,6 +210,103 @@ export default function Dashboard() {
                   </div>
                 </CardContent>
               </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Projets récents</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {recentProjects.slice(0, 3).map((project) => (
+                      <div key={project.id} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium line-clamp-1">{project.name}</p>
+                            <p className="text-xs text-muted-foreground">{project.chef}</p>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {project.status}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span>Progress</span>
+                            <span>{project.progress}%</span>
+                          </div>
+                          <Progress value={project.progress} className="h-1" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tableau de bord détaillé */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Projets par statut</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span className="text-sm">En cours</span>
+                      </div>
+                      <span className="text-sm font-medium">12</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="text-sm">Terminés</span>
+                      </div>
+                      <span className="text-sm font-medium">8</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                        <span className="text-sm">En pause</span>
+                      </div>
+                      <span className="text-sm font-medium">3</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                        <span className="text-sm">Planification</span>
+                      </div>
+                      <span className="text-sm font-medium">1</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Performance cette semaine</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Tâches terminées</span>
+                      <span className="text-sm font-medium">23</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Livrables validés</span>
+                      <span className="text-sm font-medium">5</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Réunions tenues</span>
+                      <span className="text-sm font-medium">12</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Retard moyen</span>
+                      <span className="text-sm font-medium text-green-600">-2 jours</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         )
@@ -220,7 +318,9 @@ export default function Dashboard() {
       <ProtectedRoute>
         <div className="min-h-screen bg-gray-50">
           <Navigation currentView={currentView} onViewChange={setCurrentView} />
-          <main className="container mx-auto px-4 py-6">{renderContent()}</main>
+          <main className="container mx-auto px-4 py-6">
+            {renderContent()}
+          </main>
           <SessionTimeout />
         </div>
       </ProtectedRoute>

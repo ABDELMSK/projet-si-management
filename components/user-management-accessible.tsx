@@ -1,4 +1,4 @@
-// components/user-management.tsx
+// components/user-management-accessible.tsx
 "use client"
 
 import type React from "react"
@@ -313,7 +313,7 @@ export default function UserManagement() {
         </CardContent>
       </Card>
 
-      {/* Dialog de création d'utilisateur */}
+      {/* Dialog de création d'utilisateur avec DialogTitle explicite */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>

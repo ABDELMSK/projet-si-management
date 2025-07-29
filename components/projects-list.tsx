@@ -1,235 +1,428 @@
+// components/projects-list.tsx - Compatible avec votre architecture existante
 "use client"
 
-import { useState } from "react"
+import type React from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Search, Eye } from "lucide-react"
+import { 
+  Plus, 
+  Search, 
+  Calendar, 
+  Users, 
+  Target, 
+  Loader2,
+  RefreshCw,
+  AlertCircle,
+  Euro,
+  Eye,
+  Edit,
+  Trash2
+} from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
+import { projectApi, type Project } from "@/lib/api"
 import CreateProjectDialog from "./create-project-dialog"
-import { usePermissions } from "@/lib/auth"
+import { useAuth, usePermissions } from "@/lib/auth"
 
 interface ProjectsListProps {
-  onSelectProject: (project: any) => void
+  onSelectProject: (project: any) => void // Compatible avec votre interface existante
 }
 
 export default function ProjectsList({ onSelectProject }: ProjectsListProps) {
-  const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const { user } = useAuth()
   const permissions = usePermissions()
+  const [projects, setProjects] = useState<Project[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState<string>("all")
+  const [selectedDirection, setSelectedDirection] = useState<string>("all")
 
-  const projects = [
-    {
-      id: "PRJ-2025-001",
-      name: "Migration ERP SAP",
-      type: "ERP",
-      status: "En cours",
-      phase: "Exécution",
-      progress: 65,
-      health: "Vert",
-      chef: "Marie Dubois",
-      direction: "DSI",
-      budget: "450K€",
-      dateDebut: "2024-01-15",
-      dateFin: "2025-06-30",
-    },
-    {
-      id: "PRJ-2025-002",
-      name: "Sécurisation Infrastructure",
-      type: "Sécurité",
-      status: "En cours",
-      phase: "Contractualisation",
-      progress: 30,
-      health: "Orange",
-      chef: "Pierre Martin",
-      direction: "DSI",
-      budget: "280K€",
-      dateDebut: "2024-03-01",
-      dateFin: "2025-08-15",
-    },
-    {
-      id: "PRJ-2025-003",
-      name: "Développement App Mobile",
-      type: "Développement spécifique",
-      status: "En attente",
-      phase: "Cadrage",
-      progress: 15,
-      health: "Vert",
-      chef: "Sophie Laurent",
-      direction: "Marketing",
-      budget: "320K€",
-      dateDebut: "2024-05-01",
-      dateFin: "2025-12-31",
-    },
-    {
-      id: "PRJ-2025-004",
-      name: "Migration Cloud AWS",
-      type: "Migration",
-      status: "Terminé",
-      phase: "Clôture",
-      progress: 100,
-      health: "Vert",
-      chef: "Thomas Durand",
-      direction: "DSI",
-      budget: "180K€",
-      dateDebut: "2023-09-01",
-      dateFin: "2024-12-15",
-    },
-  ]
+  // Charger les projets
+  const loadProjects = useCallback(async (showLoader = true) => {
+    if (showLoader) setIsLoading(true)
+    else setIsRefreshing(true)
+    
+    try {
+      const response = await projectApi.getProjects()
+      
+      if (response.success && response.data) {
+        setProjects(response.data)
+      } else {
+        throw new Error(response.message || "Erreur lors du chargement")
+      }
+    } catch (error) {
+      console.error("Erreur lors du chargement des projets:", error)
+      toast({
+        title: "Erreur",
+        description: "Impossible de charger les projets",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [])
 
+  // Charger les projets au montage
+  useEffect(() => {
+    loadProjects()
+  }, [loadProjects])
+
+  // Callback appelé après création d'un projet
+  const handleProjectCreated = useCallback(() => {
+    loadProjects(false) // Rafraîchir sans loader
+    toast({
+      title: "Projet créé",
+      description: "Le nouveau projet apparaît dans la liste",
+    })
+  }, [loadProjects])
+
+  // Fonction pour voir les détails (compatible avec votre architecture)
+  const handleViewDetails = (project: Project) => {
+    // Conversion du projet API vers le format attendu par votre composant ProjectDetail existant
+    const compatibleProject = {
+      id: project.id.toString(),
+      name: project.nom,
+      description: project.description,
+      status: project.statut_nom,
+      progress: project.pourcentage_avancement,
+      health: project.pourcentage_avancement >= 80 ? "Vert" : 
+              project.pourcentage_avancement >= 60 ? "Orange" : "Rouge",
+      chef: project.chef_projet_nom,
+      budget: project.budget ? new Intl.NumberFormat("fr-FR", {
+        style: "currency",
+        currency: "EUR",
+        minimumFractionDigits: 0,
+      }).format(project.budget) : "Non défini",
+      direction: project.direction_nom,
+      priorite: project.priorite,
+      dateDebut: project.date_debut,
+      dateFin: project.date_fin_prevue,
+      type: "ERP", // Valeur par défaut
+      code: `PRJ-${project.id}`,
+      // Ajout des données API complètes pour compatibilité
+      apiData: project
+    }
+    
+    onSelectProject(compatibleProject)
+  }
+
+  // Filtrer les projets
   const filteredProjects = projects.filter((project) => {
-    const matchesSearch =
-      project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      project.id.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" || project.status === statusFilter
-    return matchesSearch && matchesStatus
+    const matchesSearch = project.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         project.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         project.chef_projet_nom.toLowerCase().includes(searchTerm.toLowerCase())
+    
+    const matchesStatus = selectedStatus === "all" || project.statut_nom === selectedStatus
+    const matchesDirection = selectedDirection === "all" || project.direction_nom === selectedDirection
+    
+    return matchesSearch && matchesStatus && matchesDirection
   })
 
-  const getHealthColor = (health: string) => {
-    switch (health) {
-      case "Vert":
-        return "bg-green-500"
-      case "Orange":
-        return "bg-orange-500"
-      case "Rouge":
-        return "bg-red-500"
-      default:
-        return "bg-gray-500"
+  // Obtenir les statuts et directions uniques pour les filtres
+  const uniqueStatuses = Array.from(new Set(projects.map(p => p.statut_nom)))
+  const uniqueDirections = Array.from(new Set(projects.map(p => p.direction_nom)))
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "Haute": return "destructive"
+      case "Normale": return "secondary"
+      case "Faible": return "outline"
+      default: return "secondary"
     }
   }
 
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-      case "En cours":
-        return "default"
-      case "En attente":
-        return "secondary"
-      case "Terminé":
-        return "outline"
-      case "Suspendu":
-        return "destructive"
-      default:
-        return "secondary"
+  const getPriorityIcon = (priority: string) => {
+    switch (priority) {
+      case "Haute": return "🔴"
+      case "Normale": return "🟡"
+      case "Faible": return "🟢"
+      default: return "🟡"
     }
+  }
+
+  const formatCurrency = (amount?: number) => {
+    if (!amount) return "Non défini"
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
+    }).format(amount)
+  }
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "Non définie"
+    return new Date(dateString).toLocaleDateString("fr-FR")
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Chargement des projets...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header avec actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Gestion des Projets</h1>
-          <p className="text-muted-foreground">Gérez tous vos projets SI</p>
+          <h1 className="text-2xl font-bold">Mes Projets</h1>
+          <p className="text-muted-foreground">
+            {filteredProjects.length} projet{filteredProjects.length > 1 ? 's' : ''} 
+            {projects.length !== filteredProjects.length && ` sur ${projects.length}`}
+          </p>
         </div>
-        {permissions.canCreateProject && (
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nouveau Projet
+        
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadProjects(false)}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Actualiser
           </Button>
-        )}
+          
+          {permissions.canCreateProject && (
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nouveau projet
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtres</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher par nom ou code projet..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
+      {/* Barre de recherche et filtres */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+          <Input
+            placeholder="Rechercher un projet..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        
+        <div className="flex gap-2">
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="px-3 py-2 border rounded-md text-sm"
+          >
+            <option value="all">Tous les statuts</option>
+            {uniqueStatuses.map(status => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+          
+          <select
+            value={selectedDirection}
+            onChange={(e) => setSelectedDirection(e.target.value)}
+            className="px-3 py-2 border rounded-md text-sm"
+          >
+            <option value="all">Toutes les directions</option>
+            {uniqueDirections.map(direction => (
+              <option key={direction} value={direction}>{direction}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Statistiques rapides */}
+      {projects.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Target className="h-4 w-4 text-blue-500 mr-2" />
+                <div>
+                  <p className="text-sm font-medium">Total projets</p>
+                  <p className="text-2xl font-bold">{projects.length}</p>
+                </div>
               </div>
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Filtrer par statut" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous les statuts</SelectItem>
-                <SelectItem value="En cours">En cours</SelectItem>
-                <SelectItem value="En attente">En attente</SelectItem>
-                <SelectItem value="Terminé">Terminé</SelectItem>
-                <SelectItem value="Suspendu">Suspendu</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Calendar className="h-4 w-4 text-green-500 mr-2" />
+                <div>
+                  <p className="text-sm font-medium">En cours</p>
+                  <p className="text-2xl font-bold">
+                    {projects.filter(p => p.statut_nom === "En cours").length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Users className="h-4 w-4 text-purple-500 mr-2" />
+                <div>
+                  <p className="text-sm font-medium">Terminés</p>
+                  <p className="text-2xl font-bold">
+                    {projects.filter(p => p.statut_nom === "Terminé").length}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center">
+                <Euro className="h-4 w-4 text-yellow-500 mr-2" />
+                <div>
+                  <p className="text-sm font-medium">Budget total</p>
+                  <p className="text-2xl font-bold">
+                    {formatCurrency(projects.reduce((sum, p) => sum + (p.budget || 0), 0))}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* Projects Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Liste des Projets ({filteredProjects.length})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code/Nom</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Statut</TableHead>
-                <TableHead>Phase</TableHead>
-                <TableHead>Chef de Projet</TableHead>
-                <TableHead>Budget</TableHead>
-                <TableHead>Avancement</TableHead>
-                <TableHead>Santé</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProjects.map((project) => (
-                <TableRow key={project.id}>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{project.name}</div>
-                      <div className="text-sm text-muted-foreground">{project.id}</div>
+      {/* Liste des projets */}
+      {filteredProjects.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">
+              {projects.length === 0 ? "Aucun projet trouvé" : "Aucun projet ne correspond à vos critères"}
+            </h3>
+            <p className="text-muted-foreground mb-6">
+              {projects.length === 0 
+                ? "Commencez par créer votre premier projet"
+                : "Essayez de modifier vos filtres de recherche"
+              }
+            </p>
+            {projects.length === 0 && permissions.canCreateProject && (
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Créer mon premier projet
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredProjects.map((project) => (
+            <Card key={project.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-lg mb-2">{project.nom}</CardTitle>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge 
+                        variant="outline"
+                        style={{ 
+                          backgroundColor: `${project.statut_couleur}20`,
+                          borderColor: project.statut_couleur,
+                          color: project.statut_couleur
+                        }}
+                      >
+                        {project.statut_nom}
+                      </Badge>
+                      <Badge variant={getPriorityColor(project.priorite)}>
+                        {getPriorityIcon(project.priorite)} {project.priorite}
+                      </Badge>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{project.type}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusVariant(project.status)}>{project.status}</Badge>
-                  </TableCell>
-                  <TableCell>{project.phase}</TableCell>
-                  <TableCell>{project.chef}</TableCell>
-                  <TableCell className="font-medium">{project.budget}</TableCell>
-                  <TableCell>
-                    <div className="w-20">
-                      <Progress value={project.progress} className="h-2" />
-                      <div className="text-xs text-center mt-1">{project.progress}%</div>
+                  </div>
+                </div>
+                
+                {project.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {project.description}
+                  </p>
+                )}
+              </CardHeader>
+              
+              <CardContent className="space-y-4">
+                {/* Informations projet */}
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Chef de projet:</span>
+                    <span className="font-medium">{project.chef_projet_nom}</span>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Direction:</span>
+                    <span className="font-medium">{project.direction_nom}</span>
+                  </div>
+                  
+                  {project.budget && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Budget:</span>
+                      <span className="font-medium">{formatCurrency(project.budget)}</span>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-3 h-3 rounded-full ${getHealthColor(project.health)}`} />
-                      <span className="text-sm">{project.health}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="outline" size="sm" onClick={() => onSelectProject(project)}>
-                      <Eye className="mr-2 h-4 w-4" />
-                      Voir
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  )}
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Dates:</span>
+                    <span className="text-xs">
+                      {formatDate(project.date_debut)} → {formatDate(project.date_fin_prevue)}
+                    </span>
+                  </div>
+                </div>
 
-      <CreateProjectDialog open={showCreateDialog} onOpenChange={setShowCreateDialog} />
+                {/* Progression */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Avancement</span>
+                    <span>{Math.round(project.pourcentage_avancement)}%</span>
+                  </div>
+                  <Progress value={project.pourcentage_avancement} className="h-2" />
+                </div>
+
+                {/* Tâches */}
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>{project.nb_taches} tâche{project.nb_taches > 1 ? 's' : ''}</span>
+                  <span>
+                    {Math.round(project.taches_completees_pct)}% terminées
+                  </span>
+                </div>
+
+                {/* Actions - Compatible avec votre architecture */}
+                <div className="flex gap-2 pt-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => handleViewDetails(project)}
+                  >
+                    <Eye className="mr-2 h-4 w-4" />
+                    Voir détails
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Dialog de création */}
+      <CreateProjectDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        onProjectCreated={handleProjectCreated}
+      />
     </div>
   )
 }
