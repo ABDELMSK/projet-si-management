@@ -90,15 +90,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Fonction de déconnexion
   const logout = () => {
-    console.log('🔐 Déconnexion...')
-    authService.logout()
-    setUser(null)
-    
-    // Redirection vers la page de connexion si nécessaire
-    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
-      window.location.href = '/login'
-    }
+  console.log('🔐 Déconnexion...')
+  authService.logout()
+  setUser(null)
+  
+  // ✅ Solution simple : recharger la page au lieu de rediriger
+  if (typeof window !== 'undefined') {
+    window.location.reload()
   }
+}
 
   // Charger l'utilisateur au démarrage
   useEffect(() => {

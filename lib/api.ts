@@ -300,6 +300,7 @@ export function isAuthenticated(): boolean {
   return !!token
 }
 
+
 // Fonction utilitaire pour forcer la déconnexion
 export function forceLogout(): void {
   if (typeof window !== 'undefined') {
@@ -307,4 +308,17 @@ export function forceLogout(): void {
     localStorage.removeItem('user')
     window.location.href = '/login'
   }
+
+}
+// Interfaces étendues pour CRUD
+export interface CreateProjectData {
+  nom: string;
+  description?: string;
+  chef_projet_id: number;
+  direction_id: number;
+  statut_id: number;
+  budget?: number;
+  date_debut?: string;
+  date_fin_prevue?: string;
+  priorite?: string;
 }
