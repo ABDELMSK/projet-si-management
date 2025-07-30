@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { projectService } from "@/lib/api"
 import {
   Dialog,
   DialogContent,
@@ -77,6 +78,13 @@ export default function CreateProjectDialog({
     ]
   })
 
+  // Load reference data when dialog opens
+  useEffect(() => {
+    if (open && !isLoadingRef) {
+      loadReferenceData()
+    }
+  }, [open])
+
   // Reset form when dialog closes
   useEffect(() => {
     if (!open) {
@@ -95,65 +103,97 @@ export default function CreateProjectDialog({
     }
   }, [open])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-
+  const loadReferenceData = async () => {
     try {
-      // Prepare data for API
-      const projectData = {
-        nom: formData.nom.trim(),
-        code: formData.code.trim(),
-        description: formData.description.trim() || null,
-        chef_projet_id: parseInt(formData.chef_projet_id),
-        direction_id: parseInt(formData.direction_id),
-        statut_id: parseInt(formData.statut_id),
-        budget: formData.budget ? parseFloat(formData.budget) : null,
-        date_debut: dateDebut ? format(dateDebut, 'yyyy-MM-dd') : null,
-        date_fin_prevue: dateFin ? format(dateFin, 'yyyy-MM-dd') : null,
-        priorite: formData.priorite
+      setIsLoadingRef(true)
+      const API_BASE_URL = 'http://localhost:5000'
+      const token = localStorage.getItem('token')
+
+      // Load all reference data
+      const [directionsRes, statutsRes, utilisateursRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/reference/directions`, {
+          headers: { ...(token && { 'Authorization': `Bearer ${token}` }) }
+        }),
+        fetch(`${API_BASE_URL}/api/reference/project-statuses`, {
+          headers: { ...(token && { 'Authorization': `Bearer ${token}` }) }
+        }),
+        fetch(`${API_BASE_URL}/api/reference/users/chefs-projets`, {
+          headers: { ...(token && { 'Authorization': `Bearer ${token}` }) }
+        })
+      ])
+
+      if (directionsRes.ok) {
+        const directionsData = await directionsRes.json()
+        if (directionsData.success) {
+          setReferenceData(prev => ({ ...prev, directions: directionsData.data }))
+        }
       }
 
-      console.log('🔄 Création de projet avec données:', projectData)
-
-      // API call to create project
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(projectData)
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.message || 'Erreur lors de la création du projet')
+      if (statutsRes.ok) {
+        const statutsData = await statutsRes.json()
+        if (statutsData.success) {
+          setReferenceData(prev => ({ ...prev, statuts: statutsData.data }))
+        }
       }
 
-      console.log('✅ Projet créé avec succès:', result)
-
-      toast({
-        title: "Succès",
-        description: "Le projet a été créé avec succès",
-      })
-
-      onProjectCreated()
-      onOpenChange(false)
+      if (utilisateursRes.ok) {
+        const utilisateursData = await utilisateursRes.json()
+        if (utilisateursData.success) {
+          setReferenceData(prev => ({ ...prev, utilisateurs: utilisateursData.data }))
+        }
+      }
 
     } catch (error) {
-      console.error('❌ Erreur lors de la création du projet:', error)
-      toast({
-        title: "Erreur",
-        description: error instanceof Error ? error.message : "Erreur lors de la création du projet",
-        variant: "destructive",
-      })
+      console.error('Erreur lors du chargement des données de référence:', error)
     } finally {
-      setIsLoading(false)
+      setIsLoadingRef(false)
     }
   }
 
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
+  setIsLoading(true)
+
+  try {
+    // FIXED: Remove 'code' field since the database doesn't have this column
+    const projectData = {
+      nom: formData.nom.trim(),
+      code: formData.code.trim(), // REMOVED - database doesn't have this column
+      description: formData.description.trim() || undefined,
+      chef_projet_id: parseInt(formData.chef_projet_id),
+      direction_id: parseInt(formData.direction_id),
+      statut_id: parseInt(formData.statut_id),
+      budget: formData.budget ? parseFloat(formData.budget) : undefined,
+      date_debut: dateDebut ? format(dateDebut, 'yyyy-MM-dd') : undefined,
+      date_fin_prevue: dateFin ? format(dateFin, 'yyyy-MM-dd') : undefined,
+      priorite: formData.priorite
+    }
+
+    console.log('🔄 Création de projet avec données:', projectData)
+
+    const result = await projectService.createProject(projectData)
+
+    console.log('✅ Projet créé avec succès:', result)
+
+    toast({
+      title: "Succès",
+      description: "Le projet a été créé avec succès",
+    })
+
+    onProjectCreated()
+    onOpenChange(false)
+
+  } catch (error) {
+    console.error('❌ Erreur lors de la création du projet:', error)
+    toast({
+      title: "Erreur",
+      description: error instanceof Error ? error.message : "Erreur lors de la création du projet",
+      variant: "destructive",
+    })
+  } finally {
+    setIsLoading(false)
+  }
+}
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">

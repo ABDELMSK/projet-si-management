@@ -151,6 +151,7 @@ export const projectService = {
 
   async createProject(projectData: {
     nom: string;
+    code: string;
     description?: string;
     chef_projet_id: number;
     direction_id: number;
