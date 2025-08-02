@@ -28,7 +28,7 @@ import CreateProjectDialog from "./create-project-dialog"
 import { useAuth, usePermissions } from "@/lib/auth"
 
 interface ProjectsListProps {
-  onSelectProject: (project: any) => void // Compatible avec votre interface existante
+  onSelectProject?: (project: any) => void // ✅ Prop optionnelle
 }
 
 export default function ProjectsList({ onSelectProject }: ProjectsListProps) {
@@ -84,7 +84,7 @@ export default function ProjectsList({ onSelectProject }: ProjectsListProps) {
 
   // Fonction pour voir les détails (compatible avec votre architecture)
   const handleViewDetails = (project: Project) => {
-    // Conversion du projet API vers le format attendu par votre composant ProjectDetail existant
+    // Conversion du projet API vers le format attendu
     const compatibleProject = {
       id: project.id.toString(),
       name: project.nom,
@@ -109,7 +109,20 @@ export default function ProjectsList({ onSelectProject }: ProjectsListProps) {
       apiData: project
     }
     
-    onSelectProject(compatibleProject)
+    // ✅ VÉRIFICATION avant d'appeler la fonction
+    if (onSelectProject && typeof onSelectProject === 'function') {
+      onSelectProject(compatibleProject)
+    } else {
+      // ✅ FALLBACK : Afficher les détails d'une autre manière ou logger
+      console.log('Projet sélectionné:', compatibleProject)
+      // Vous pouvez aussi ouvrir un modal, changer de route, etc.
+      
+      // Exemple : redirection vers une page de détails
+      // window.location.href = `/projects/${project.id}`
+      
+      // Ou afficher une alerte temporaire
+      alert(`Projet sélectionné: ${project.nom}`)
+    }
   }
 
   // Filtrer les projets
