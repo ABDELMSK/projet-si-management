@@ -1,4 +1,4 @@
-// app/page.tsx - Mise à jour avec gestion des détails de projet
+// app/page.tsx - Fixed version with proper ProjectsList integration
 "use client"
 
 import { useState } from "react"
@@ -79,10 +79,20 @@ export default function Dashboard() {
     },
   ]
 
-  // Fonction pour gérer l'affichage des détails d'un projet
-  const handleViewProjectDetails = (projectId: number) => {
-    setSelectedProjectId(projectId)
-    setCurrentView("project-detail")
+  // ✅ FIXED: Handler function that receives project data from ProjectsList
+  const handleSelectProject = (projectData: any) => {
+    console.log("Projet sélectionné:", projectData)
+    
+    // Extract project ID from the converted project data
+    // The ProjectsList component converts the project and includes apiData
+    const projectId = projectData.apiData?.id || parseInt(projectData.id)
+    
+    if (projectId) {
+      setSelectedProjectId(projectId)
+      setCurrentView("project-detail")
+    } else {
+      console.error("Impossible d'extraire l'ID du projet:", projectData)
+    }
   }
 
   // Fonction pour éditer un projet
@@ -104,8 +114,7 @@ export default function Dashboard() {
       case "projects":
         return (
           <ProjectsList 
-            onViewDetails={handleViewProjectDetails}
-            onEditProject={handleEditProject}
+            onSelectProject={handleSelectProject}
           />
         )
       
@@ -205,78 +214,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span>5 phases validées cette semaine</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Projets récents</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {recentProjects.slice(0, 3).map((project) => (
-                      <div key={project.id} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <p className="text-sm font-medium line-clamp-1">{project.name}</p>
-                            <p className="text-xs text-muted-foreground">{project.chef}</p>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {project.status}
-                          </Badge>
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span>Progress</span>
-                            <span>{project.progress}%</span>
-                          </div>
-                          <Progress value={project.progress} className="h-1" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Tableau de bord détaillé */}
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Projets par statut</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span className="text-sm">En cours</span>
-                      </div>
-                      <span className="text-sm font-medium">12</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm">Terminés</span>
-                      </div>
-                      <span className="text-sm font-medium">8</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                        <span className="text-sm">En pause</span>
-                      </div>
-                      <span className="text-sm font-medium">3</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                        <span className="text-sm">Planification</span>
-                      </div>
-                      <span className="text-sm font-medium">1</span>
+                      <span>5 nouvelles validations en attente</span>
                     </div>
                   </div>
                 </CardContent>
@@ -308,6 +246,50 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Projets récents */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Projets récents</CardTitle>
+                <CardDescription>
+                  Aperçu des derniers projets mis à jour
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {recentProjects.map((project, index) => (
+                    <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <h4 className="font-medium">{project.name}</h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="secondary">{project.status}</Badge>
+                            <span className="text-sm text-muted-foreground">
+                              Chef: {project.chef}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-sm font-medium">{project.budget}</p>
+                          <div className="flex items-center gap-2">
+                            <Progress value={project.progress} className="w-20 h-2" />
+                            <span className="text-sm text-muted-foreground">
+                              {project.progress}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className={`w-3 h-3 rounded-full ${
+                          project.health === "Vert" ? "bg-green-500" : 
+                          project.health === "Orange" ? "bg-orange-500" : "bg-red-500"
+                        }`} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )
     }
