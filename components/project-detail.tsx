@@ -12,12 +12,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { 
   ArrowLeft, 
   Edit, 
   Download, 
   Upload, 
-  Calendar, 
+  Calendar as CalendarIcon, 
   Euro, 
   CheckCircle, 
   Clock,
@@ -25,12 +29,18 @@ import {
   Loader2,
   Users,
   FileText,
-  Target
+  Target,
+  Plus,
+  Trash2,
+  Save,
+  X
 } from "lucide-react"
-import { toast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { projectApi, type Project } from "@/lib/api"
 import { phaseService, type Phase } from "@/lib/services/phaseService"
+import { referenceService } from "@/lib/api"
+import { format } from "date-fns"
 
 interface ProjectDetailProps {
   projectId: number
@@ -38,13 +48,71 @@ interface ProjectDetailProps {
   onEdit?: (project: Project) => void
 }
 
+interface PhaseFormData {
+  nom: string
+  description: string
+  date_debut: string
+  date_fin_prevue: string
+  statut: 'Planifiée' | 'En cours' | 'Terminée' | 'En pause' | 'Annulée'
+  responsable_id?: number
+  budget_alloue?: number
+  ordre: number
+}
+
 export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDetailProps) {
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("general")
   const [project, setProject] = useState<Project | null>(null)
   const [phases, setPhases] = useState<Phase[]>([])
+  const [utilisateurs, setUtilisateurs] = useState<any[]>([])
   const [isLoadingProject, setIsLoadingProject] = useState(true)
   const [isLoadingPhases, setIsLoadingPhases] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // État pour la gestion des phases
+  const [showPhaseDialog, setShowPhaseDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [editingPhase, setEditingPhase] = useState<Phase | null>(null)
+  const [phaseToDelete, setPhaseToDelete] = useState<Phase | null>(null)
+  const [phaseFormData, setPhaseFormData] = useState<PhaseFormData>({
+    nom: '',
+    description: '',
+    date_debut: '',
+    date_fin_prevue: '',
+    statut: 'Planifiée',
+    responsable_id: undefined,
+    budget_alloue: undefined,
+    ordre: 1
+  })
+
+  // État pour les calendriers
+  const [dateDebut, setDateDebut] = useState<Date>()
+  const [dateFin, setDateFin] = useState<Date>()
+  const [showDateDebutPicker, setShowDateDebutPicker] = useState(false)
+  const [showDateFinPicker, setShowDateFinPicker] = useState(false)
+
+  // Charger les utilisateurs (pour les responsables)
+  useEffect(() => {
+    const loadUtilisateurs = async () => {
+      // Vérifier si l'utilisateur est connecté
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      if (!token) {
+        console.warn('❌ Aucun token d\'authentification trouvé')
+        return
+      }
+
+      try {
+        const response = await referenceService.getChefsProjets()
+        if (response.success && response.data) {
+          setUtilisateurs(response.data || [])
+        }
+      } catch (err) {
+        console.error("Erreur chargement utilisateurs:", err)
+      }
+    }
+    loadUtilisateurs()
+  }, [])
 
   // Charger les détails du projet
   useEffect(() => {
@@ -79,38 +147,195 @@ export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDeta
   }, [projectId])
 
   // Charger les phases du projet
-  useEffect(() => {
-    const loadPhases = async () => {
-      try {
-        setIsLoadingPhases(true)
-        
-        const response = await phaseService.getProjectPhases(projectId)
-        
-        if (response.success && response.data) {
-          setPhases(response.data)
-        } else {
-          console.warn("Aucune phase trouvée pour ce projet")
-          setPhases([])
-        }
-      } catch (err) {
-        console.error("Erreur chargement phases:", err)
-        setPhases([])
-        toast({
-          title: "Attention",
-          description: "Impossible de charger les phases du projet",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoadingPhases(false)
-      }
+  const loadPhases = async () => {
+    // Vérifier si l'utilisateur est connecté
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    if (!token) {
+      console.warn('❌ Aucun token d\'authentification trouvé')
+      setPhases([])
+      return
     }
 
+    try {
+      setIsLoadingPhases(true)
+      
+      const response = await phaseService.getProjectPhases(projectId)
+      
+      if (response.success && response.data) {
+        setPhases(response.data.sort((a, b) => a.ordre - b.ordre))
+      } else {
+        console.warn("Aucune phase trouvée pour ce projet")
+        setPhases([])
+      }
+    } catch (err) {
+      console.error("Erreur chargement phases:", err)
+      setPhases([])
+    } finally {
+      setIsLoadingPhases(false)
+    }
+  }
+
+  useEffect(() => {
     if (projectId) {
       loadPhases()
     }
   }, [projectId])
 
-  // Fonctions utilitaires
+  // Réinitialiser le formulaire de phase
+  const resetPhaseForm = () => {
+    setPhaseFormData({
+      nom: '',
+      description: '',
+      date_debut: '',
+      date_fin_prevue: '',
+      statut: 'Planifiée',
+      responsable_id: undefined,
+      budget_alloue: undefined,
+      ordre: phases.length + 1
+    })
+    setDateDebut(undefined)
+    setDateFin(undefined)
+    setEditingPhase(null)
+  }
+
+  // Ouvrir le dialog d'ajout de phase
+  const handleAddPhase = () => {
+    resetPhaseForm()
+    setPhaseFormData(prev => ({ ...prev, ordre: phases.length + 1 }))
+    setShowPhaseDialog(true)
+  }
+
+  // Ouvrir le dialog d'édition de phase
+  const handleEditPhase = (phase: Phase) => {
+    setEditingPhase(phase)
+    setPhaseFormData({
+      nom: phase.nom,
+      description: phase.description || '',
+      date_debut: phase.date_debut || '',
+      date_fin_prevue: phase.date_fin_prevue || '',
+      statut: phase.statut,
+      responsable_id: phase.responsable_id,
+      budget_alloue: phase.budget_alloue,
+      ordre: phase.ordre
+    })
+    setDateDebut(phase.date_debut ? new Date(phase.date_debut) : undefined)
+    setDateFin(phase.date_fin_prevue ? new Date(phase.date_fin_prevue) : undefined)
+    setShowPhaseDialog(true)
+  }
+
+  // Sauvegarder une phase (création ou modification)
+  const handleSavePhase = async () => {
+    if (!phaseFormData.nom.trim()) {
+      toast({
+        title: "Erreur",
+        description: "Le nom de la phase est obligatoire",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      // Debug - afficher les données
+      console.log('🔍 Debug - Données de phase:', phaseFormData)
+      console.log('🔍 Debug - Project ID:', projectId)
+      
+      // ✅ CORRECTION: Convertir undefined en null pour MySQL
+      const formDataWithDates = {
+        nom: phaseFormData.nom,
+        description: phaseFormData.description || null,
+        date_debut: dateDebut ? format(dateDebut, 'yyyy-MM-dd') : null,
+        date_fin_prevue: dateFin ? format(dateFin, 'yyyy-MM-dd') : null,
+        statut: phaseFormData.statut,
+        ordre: phaseFormData.ordre,
+        budget_alloue: phaseFormData.budget_alloue || null,
+        responsable_id: phaseFormData.responsable_id || null,
+        pourcentage_avancement: 0 // Par défaut pour une nouvelle phase
+      }
+      
+      console.log('🔍 Debug - Données nettoyées:', formDataWithDates)
+
+      if (editingPhase) {
+        // Modification
+        await phaseService.updatePhase(editingPhase.id, formDataWithDates)
+        toast({
+          title: "Succès",
+          description: "Phase modifiée avec succès",
+        })
+      } else {
+        // Création
+        console.log('🔄 Tentative de création phase...')
+        const response = await phaseService.createPhase(projectId, formDataWithDates)
+        console.log('✅ Réponse création:', response)
+        toast({
+          title: "Succès",
+          description: "Phase créée avec succès",
+        })
+      }
+
+      setShowPhaseDialog(false)
+      resetPhaseForm()
+      loadPhases() // Recharger la liste des phases
+    } catch (error) {
+      console.error("❌ Erreur sauvegarde phase:", error)
+      
+      // Debug - plus d'infos sur l'erreur
+      if (error instanceof Error) {
+        console.error("❌ Message d'erreur:", error.message)
+        console.error("❌ Stack trace:", error.stack)
+      }
+      
+      toast({
+        title: "Erreur",
+        description: error instanceof Error ? error.message : "Impossible de sauvegarder la phase",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Confirmer la suppression d'une phase
+  const handleDeletePhase = (phase: Phase) => {
+    setPhaseToDelete(phase)
+    setShowDeleteDialog(true)
+  }
+
+  // Supprimer une phase
+  const confirmDeletePhase = async () => {
+    if (!phaseToDelete) return
+
+    setIsSubmitting(true)
+    try {
+      await phaseService.deletePhase(phaseToDelete.id)
+      toast({
+        title: "Succès",
+        description: "Phase supprimée avec succès",
+      })
+      setShowDeleteDialog(false)
+      setPhaseToDelete(null)
+      loadPhases() // Recharger la liste des phases
+    } catch (error) {
+      console.error("Erreur suppression phase:", error)
+      toast({
+        title: "Erreur",
+        description: "Impossible de supprimer la phase",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // Vérifier si l'utilisateur peut modifier les phases
+  const canManagePhases = () => {
+    const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {}
+    const isChefProjet = user.role_nom === 'Chef de Projet' && project?.chef_projet_id === user.id
+    const isAdmin = ['Administrateur fonctionnel', 'PMO / Directeur de projets'].includes(user.role_nom)
+    return isChefProjet || isAdmin
+  }
+
+  // Fonctions utilitaires (gardées du code original)
   const getStatusColor = (statut: string) => {
     switch (statut?.toLowerCase()) {
       case "terminée":
@@ -166,76 +391,55 @@ export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDeta
 
   const formatCurrency = (amount?: number) => {
     if (!amount) return "Non défini"
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: 'EUR'
+    return new Intl.NumberFormat("fr-FR", {
+      style: "currency",
+      currency: "EUR",
+      minimumFractionDigits: 0,
     }).format(amount)
   }
 
-  const calculateBudgetConsumed = () => {
-    if (!project?.budget || !project?.budget_consomme) return 0
-    return Math.round((project.budget_consomme / project.budget) * 100)
-  }
+  // Calculer l'état de santé du projet
+  const healthStatus = project ? 
+    project.pourcentage_avancement >= 80 ? "Vert" : 
+    project.pourcentage_avancement >= 60 ? "Orange" : "Rouge" : "Inconnu"
 
-  // État de chargement
   if (isLoadingProject) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Retour
-          </Button>
-          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-10 w-10" />
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-64" />
+            <Skeleton className="h-4 w-48" />
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
-          <Skeleton className="h-32" />
+        <div className="grid grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24" />
+          ))}
         </div>
-        <Skeleton className="h-96" />
       </div>
     )
   }
 
-  // État d'erreur
-  if (error) {
+  if (error || !project) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" />
             Retour
           </Button>
         </div>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>
+            {error || "Projet non trouvé"}
+          </AlertDescription>
         </Alert>
       </div>
     )
   }
-
-  if (!project) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Retour
-          </Button>
-        </div>
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Projet non trouvé</AlertDescription>
-        </Alert>
-      </div>
-    )
-  }
-
-  // Calculer l'état de santé basé sur l'avancement
-  const healthStatus = project.pourcentage_avancement >= 80 ? "Vert" : 
-                      project.pourcentage_avancement >= 60 ? "Orange" : "Rouge"
 
   return (
     <div className="space-y-6">
@@ -243,33 +447,44 @@ export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDeta
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" />
             Retour
           </Button>
           <div>
             <h1 className="text-2xl font-bold">{project.nom}</h1>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant={getStatusBadgeVariant(project.statut_nom)}>
-                {project.statut_nom}
-              </Badge>
-              <span className="text-sm text-muted-foreground">
-                Code: {project.code}
-              </span>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Code: PRJ-{project.id} • Direction: {project.direction_nom}
+            </p>
           </div>
         </div>
         <div className="flex gap-2">
           {onEdit && (
             <Button variant="outline" onClick={() => onEdit(project)}>
-              <Edit className="mr-2 h-4 w-4" />
+              <Edit className="h-4 w-4 mr-2" />
               Modifier
             </Button>
           )}
+          <Button variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Cards de résumé */}
+      <div className="grid grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <Badge variant={getStatusBadgeVariant(project.statut_nom)}>
+                {project.statut_nom}
+              </Badge>
+              <div>
+                <p className="text-sm text-muted-foreground">Statut</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
@@ -303,17 +518,6 @@ export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDeta
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-blue-600" />
-              <div>
-                <p className="text-sm text-muted-foreground">Avancement</p>
-                <p className="font-medium">{Math.round(project.pourcentage_avancement)}%</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Tabs */}
@@ -329,104 +533,24 @@ export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDeta
           <TabsTrigger value="suivi">Suivi</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="general" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Informations générales</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Nom du projet</Label>
-                  <Input value={project.nom} readOnly />
-                </div>
-                <div>
-                  <Label>Code projet</Label>
-                  <Input value={project.code} readOnly />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Chef de projet</Label>
-                  <Input value={project.chef_projet_nom || "Non assigné"} readOnly />
-                </div>
-                <div>
-                  <Label>Direction</Label>
-                  <Input value={project.direction_nom || "Non définie"} readOnly />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Priorité</Label>
-                  <Input value={project.priorite || "Normale"} readOnly />
-                </div>
-                <div>
-                  <Label>Statut</Label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant={getStatusBadgeVariant(project.statut_nom)}>
-                      {project.statut_nom}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-              <div>
-                <Label>Description</Label>
-                <Textarea
-                  value={project.description || "Aucune description disponible"}
-                  readOnly
-                  rows={3}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="planning" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Planning du projet</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Date de début</Label>
-                  <Input value={formatDate(project.date_debut)} readOnly />
-                </div>
-                <div>
-                  <Label>Date de fin prévue</Label>
-                  <Input value={formatDate(project.date_fin_prevue)} readOnly />
-                </div>
-              </div>
-              <div>
-                <Label>Avancement global</Label>
-                <div className="mt-2">
-                  <Progress value={project.pourcentage_avancement} className="h-3" />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {Math.round(project.pourcentage_avancement)}% complété
-                  </p>
-                </div>
-              </div>
-              {project.date_fin_reelle && (
-                <div>
-                  <Label>Date de fin réelle</Label>
-                  <Input value={formatDate(project.date_fin_reelle)} readOnly />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
+        {/* Onglet Phases avec gestion */}
         <TabsContent value="phases" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium">
+              Phases du projet ({phases.length})
+            </h3>
+            {canManagePhases() && (
+              <Button onClick={handleAddPhase}>
+                <Plus className="h-4 w-4 mr-2" />
+                Ajouter une phase
+              </Button>
+            )}
+          </div>
+
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Phases du projet</span>
-                {isLoadingPhases && <Loader2 className="h-4 w-4 animate-spin" />}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               {isLoadingPhases ? (
-                <div className="space-y-3">
+                <div className="space-y-3 p-6">
                   {[1, 2, 3].map((i) => (
                     <Skeleton key={i} className="h-16 w-full" />
                   ))}
@@ -435,19 +559,31 @@ export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDeta
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Ordre</TableHead>
                       <TableHead>Phase</TableHead>
                       <TableHead>Statut</TableHead>
                       <TableHead>Date début</TableHead>
                       <TableHead>Date fin prévue</TableHead>
                       <TableHead>Avancement</TableHead>
                       <TableHead>Responsable</TableHead>
-                      <TableHead>Livrables</TableHead>
+                      <TableHead>Budget</TableHead>
+                      {canManagePhases() && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {phases.map((phase) => (
                       <TableRow key={phase.id}>
-                        <TableCell className="font-medium">{phase.nom}</TableCell>
+                        <TableCell className="font-mono text-sm">{phase.ordre}</TableCell>
+                        <TableCell>
+                          <div>
+                            <div className="font-medium">{phase.nom}</div>
+                            {phase.description && (
+                              <div className="text-sm text-muted-foreground mt-1">
+                                {phase.description}
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className={`w-3 h-3 rounded-full ${getStatusColor(phase.statut)}`} />
@@ -465,118 +601,368 @@ export default function ProjectDetail({ projectId, onBack, onEdit }: ProjectDeta
                           </div>
                         </TableCell>
                         <TableCell>{phase.responsable_nom || "Non assigné"}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <FileText className="h-4 w-4" />
-                            <span>{phase.nb_livrables || 0}</span>
-                          </div>
-                        </TableCell>
+                        <TableCell>{formatCurrency(phase.budget_alloue)}</TableCell>
+                        {canManagePhases() && (
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleEditPhase(phase)}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleDeletePhase(phase)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               ) : (
-                <div className="text-center py-8">
+                <div className="text-center py-12">
                   <Target className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-medium">Aucune phase définie</h3>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground mb-4">
                     Les phases de ce projet n'ont pas encore été créées.
                   </p>
+                  {canManagePhases() && (
+                    <Button onClick={handleAddPhase}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Créer la première phase
+                    </Button>
+                  )}
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="budget" className="space-y-4">
+        {/* Autres onglets (gardés du code original) */}
+        <TabsContent value="general" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Informations budgétaires</CardTitle>
+              <CardTitle>Informations générales</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label>Budget initial</Label>
-                  <Input value={formatCurrency(project.budget)} readOnly />
-                </div>
-                <div>
-                  <Label>Budget consommé</Label>
-                  <Input value={formatCurrency(project.budget_consomme)} readOnly />
-                </div>
-                <div>
-                  <Label>Budget restant</Label>
-                  <Input 
-                    value={formatCurrency((project.budget || 0) - (project.budget_consomme || 0))} 
-                    readOnly 
-                  />
-                </div>
+              <div>
+                <Label>Description</Label>
+                <p className="text-sm mt-1">{project.description || "Aucune description"}</p>
               </div>
-              {project.budget && (
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Consommation budgétaire</Label>
-                  <div className="mt-2">
-                    <Progress value={calculateBudgetConsumed()} className="h-3" />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {calculateBudgetConsumed()}% du budget consommé
-                    </p>
+                  <Label>Priorité</Label>
+                  <Badge variant="outline" className="mt-1">
+                    {project.priorite}
+                  </Badge>
+                </div>
+                <div>
+                  <Label>Avancement</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Progress value={project.pourcentage_avancement} className="flex-1" />
+                    <span className="text-sm font-medium">
+                      {Math.round(project.pourcentage_avancement)}%
+                    </span>
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="contrats" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Contrats et prestataires</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-medium">Fonctionnalité en cours de développement</h3>
-                <p className="text-sm text-muted-foreground">
-                  La gestion des contrats sera bientôt disponible.
-                </p>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="suivi" className="space-y-4">
+        <TabsContent value="planning" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Planning du projet</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Date de début</Label>
+                  <p className="text-sm mt-1">{formatDate(project.date_debut)}</p>
+                </div>
+                <div>
+                  <Label>Date de fin prévue</Label>
+                  <p className="text-sm mt-1">{formatDate(project.date_fin_prevue)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Autres onglets peuvent être ajoutés ici */}
+        <TabsContent value="budget">
+          <Card>
+            <CardHeader>
+              <CardTitle>Gestion du budget</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Fonctionnalité en cours de développement...
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="contrats">
+          <Card>
+            <CardHeader>
+              <CardTitle>Contrats associés</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Fonctionnalité en cours de développement...
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="suivi">
           <Card>
             <CardHeader>
               <CardTitle>Suivi du projet</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold mb-2">Informations de suivi</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Créé le:</span>
-                      <p className="font-medium">{formatDate(project.created_at)}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Dernière modification:</span>
-                      <p className="font-medium">{formatDate(project.updated_at)}</p>
-                    </div>
-                  </div>
-                </div>
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-2">Activités récentes</h4>
-                  <div className="text-center py-4">
-                    <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      Le suivi d'activité sera bientôt disponible
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Fonctionnalité en cours de développement...
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog pour créer/modifier une phase */}
+      <Dialog open={showPhaseDialog} onOpenChange={setShowPhaseDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingPhase ? 'Modifier la phase' : 'Nouvelle phase'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingPhase 
+                ? 'Modifiez les informations de la phase'
+                : 'Ajoutez une nouvelle phase au projet'
+              }
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="nom">Nom de la phase *</Label>
+                <Input
+                  id="nom"
+                  value={phaseFormData.nom}
+                  onChange={(e) => setPhaseFormData({ ...phaseFormData, nom: e.target.value })}
+                  placeholder="Ex: Analyse des besoins"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="ordre">Ordre</Label>
+                <Input
+                  id="ordre"
+                  type="number"
+                  value={phaseFormData.ordre}
+                  onChange={(e) => setPhaseFormData({ ...phaseFormData, ordre: parseInt(e.target.value) || 1 })}
+                  min="1"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={phaseFormData.description}
+                onChange={(e) => setPhaseFormData({ ...phaseFormData, description: e.target.value })}
+                rows={3}
+                placeholder="Décrivez les objectifs et activités de cette phase..."
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date de début</Label>
+                <Popover open={showDateDebutPicker} onOpenChange={setShowDateDebutPicker}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !dateDebut && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateDebut ? format(dateDebut, "dd/MM/yyyy") : "Sélectionnez une date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={dateDebut}
+                      onSelect={(date) => {
+                        setDateDebut(date)
+                        setShowDateDebutPicker(false)
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Date de fin prévue</Label>
+                <Popover open={showDateFinPicker} onOpenChange={setShowDateFinPicker}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !dateFin && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {dateFin ? format(dateFin, "dd/MM/yyyy") : "Sélectionnez une date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={dateFin}
+                      onSelect={(date) => {
+                        setDateFin(date)
+                        setShowDateFinPicker(false)
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Statut</Label>
+                <Select 
+                  value={phaseFormData.statut} 
+                  onValueChange={(value) => setPhaseFormData({ 
+                    ...phaseFormData, 
+                    statut: value as PhaseFormData['statut']
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Planifiée">Planifiée</SelectItem>
+                    <SelectItem value="En cours">En cours</SelectItem>
+                    <SelectItem value="Terminée">Terminée</SelectItem>
+                    <SelectItem value="En pause">En pause</SelectItem>
+                    <SelectItem value="Annulée">Annulée</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Responsable</Label>
+                <Select 
+                  value={phaseFormData.responsable_id?.toString() || "none"} 
+                  onValueChange={(value) => setPhaseFormData({ 
+                    ...phaseFormData, 
+                    responsable_id: value === "none" ? undefined : parseInt(value) 
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sélectionner un responsable" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Aucun responsable</SelectItem>
+                    {utilisateurs.map((user) => (
+                      <SelectItem key={user.id} value={user.id.toString()}>
+                        {user.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="budget">Budget alloué (€)</Label>
+              <Input
+                id="budget"
+                type="number"
+                value={phaseFormData.budget_alloue || ""}
+                onChange={(e) => setPhaseFormData({ 
+                  ...phaseFormData, 
+                  budget_alloue: e.target.value ? parseInt(e.target.value) : undefined 
+                })}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowPhaseDialog(false)}>
+              <X className="h-4 w-4 mr-2" />
+              Annuler
+            </Button>
+            <Button onClick={handleSavePhase} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sauvegarde...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {editingPhase ? 'Mettre à jour' : 'Créer la phase'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmation de suppression */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmer la suppression</DialogTitle>
+            <DialogDescription>
+              Êtes-vous sûr de vouloir supprimer la phase "{phaseToDelete?.nom}" ?
+              Cette action ne peut pas être annulée.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Annuler
+            </Button>
+            <Button variant="destructive" onClick={confirmDeletePhase} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Supprimer
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

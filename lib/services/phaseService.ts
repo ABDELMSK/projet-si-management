@@ -1,11 +1,9 @@
 // lib/services/phaseService.ts
-// Ce fichier est optionnel - utilisé seulement si vous avez le backend
-
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-// Utilitaire pour les headers d'authentification
+// Utilitaire pour les headers d'authentification (CORRIGÉ - utilise 'token' au lieu de 'token')
 function getAuthHeaders(): HeadersInit {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   return {
     'Content-Type': 'application/json',
     ...(token && { Authorization: `Bearer ${token}` }),
@@ -19,6 +17,21 @@ async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
       success: false,
       message: `Erreur HTTP ${response.status}`,
     }));
+    
+    // Gestion spéciale des erreurs 401
+    if (response.status === 401) {
+      console.log('🔐 Erreur 401 - Token invalide ou expiré')
+      
+      // Supprimer le token invalide
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.dispatchEvent(new CustomEvent('auth-error'))
+      }
+      
+      throw new Error('Session expirée. Veuillez vous reconnecter.')
+    }
+    
     throw new Error(errorData.message || `Erreur ${response.status}`);
   }
   return response.json();
