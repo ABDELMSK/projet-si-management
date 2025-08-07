@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useAuth } from "@/lib/auth"
 import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react"
+import Image from "next/image"
 
 export default function LoginForm() {
   const { login, isLoading } = useAuth()
@@ -43,6 +44,18 @@ export default function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          {/* Logo/Image Section */}
+          <div className="mx-auto mb-6">
+            <Image
+              src="/login-image.png"
+              alt="Logo Système Référentiel SI"
+              width={120}
+              height={40}
+              className="mx-auto"
+              priority
+            />
+          </div>
+          
           <CardTitle className="text-2xl font-bold">Connexion</CardTitle>
           <CardDescription>
             Accédez à votre tableau de bord de gestion de projets

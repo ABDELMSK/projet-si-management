@@ -1,3 +1,4 @@
+// components/navigation.tsx
 "use client"
 
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Home, FolderOpen, Users, BarChart3, Settings, LogOut } from "lucide-react"
 import { useAuth } from "@/lib/auth"
+import Image from "next/image"
 
 interface NavigationProps {
   currentView: string
@@ -46,7 +48,17 @@ export default function Navigation({ currentView, onViewChange }: NavigationProp
     <header className="bg-white border-b border-gray-200 px-4 py-3">
       <div className="container mx-auto flex items-center justify-between">
         <div className="flex items-center space-x-6">
-          <h1 className="text-xl font-bold text-gray-900">Système Référentiel SI</h1>
+          {/* Logo replacing "Système Référentiel SI" text */}
+          <div className="flex items-center">
+            <Image
+              src="/login-image.png"
+              width={140}
+              height={32}
+              className="h-8 w-auto"
+              priority
+            />
+          </div>
+          
           <nav className="flex space-x-1">
             {filteredMenuItems.map((item) => (
               <Button
@@ -54,42 +66,57 @@ export default function Navigation({ currentView, onViewChange }: NavigationProp
                 variant={currentView === item.id ? "default" : "ghost"}
                 size="sm"
                 onClick={() => onViewChange(item.id)}
-                className="flex items-center gap-2"
+                className="flex items-center space-x-2"
               >
                 <item.icon className="h-4 w-4" />
-                {item.label}
+                <span>{item.label}</span>
               </Button>
             ))}
           </nav>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src="/placeholder.svg?height=32&width=32" alt="User" />
-                <AvatarFallback>JD</AvatarFallback>
-              </Avatar>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="end" forceMount>
-            <DropdownMenuItem>
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{user?.nom}</p>
-                <p className="text-xs leading-none text-muted-foreground">{user?.role}</p>
+        <div className="flex items-center space-x-4">
+          {user && (
+            <>
+              <div className="text-sm text-gray-700">
+                <span className="font-medium">{user.nom}</span>
+                <span className="text-gray-500 ml-2">({user.role})</span>
               </div>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Paramètres</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Se déconnecter</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.avatar} alt={user.nom} />
+                      <AvatarFallback>
+                        {user.nom
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <div className="flex items-center justify-start gap-2 p-2">
+                    <div className="flex flex-col space-y-1 leading-none">
+                      <p className="font-medium">{user.nom}</p>
+                      <p className="w-[200px] truncate text-sm text-muted-foreground">
+                        {user.email}
+                      </p>
+                    </div>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-red-600" onClick={handleLogout}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Se déconnecter</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
+        </div>
       </div>
     </header>
   )
