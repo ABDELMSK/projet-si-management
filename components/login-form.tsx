@@ -41,6 +41,13 @@ export default function LoginForm() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="flex flex-col md:flex-row items-center gap-8">
+    <img
+      src="/login-image.png"
+      alt="Connexion Illustration"
+      className="w-64 h-auto hidden md:block"
+    />
+        </div>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">Connexion</CardTitle>
