@@ -52,6 +52,7 @@ export default function Navigation({ currentView, onViewChange }: NavigationProp
           <div className="flex items-center">
             <Image
               src="/login-image.png"
+              alt="Système Référentiel SI"
               width={140}
               height={32}
               className="h-8 w-auto"
